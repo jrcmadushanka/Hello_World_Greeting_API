@@ -1,8 +1,11 @@
 package com.civdevops.helloworld;
 
+import com.civdevops.helloworld.dto.ErrorResponse;
+import com.civdevops.helloworld.dto.MessageResponse;
 import com.civdevops.helloworld.service.GreetingService;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 import java.net.URLDecoder;
@@ -15,13 +18,15 @@ public final class HelloWorldHandler implements HttpHandler {
         this.service = service;
     }
 
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
     @Override
     public void handle(HttpExchange exchange) throws IOException {
         try (exchange) {
             if (!"GET".equals(exchange.getRequestMethod())) {
                 exchange.getResponseHeaders().set("Allow", "GET");
 
-                sendResponse(exchange, 405, "{\"error\":\"Method Not Allowed\"}");
+                sendResponse(exchange, 405, new ErrorResponse(Constants.INVALID_INPUT));
                 return;
             }
 
@@ -30,23 +35,23 @@ public final class HelloWorldHandler implements HttpHandler {
 
                 String greeting = service.greet(name);
 
-                sendResponse(exchange, 200, "{\"message\":\"" + escapeJson(greeting) + "\"}");
+                sendResponse(exchange, 200,  new MessageResponse(greeting));
             } catch (IllegalArgumentException e) {
-                sendResponse(exchange, 400, "{\"error\":\"" + Constants.INVALID_INPUT + "\"}");
+                sendResponse(exchange, 400,  new ErrorResponse(Constants.INVALID_INPUT));
             }
         }
     }
 
-    private void sendResponse(HttpExchange exchange, int status, String json) throws IOException {
+    private void sendResponse( HttpExchange exchange, int status, Object response) throws IOException {
 
-        byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
+        byte[] body  =  OBJECT_MAPPER.writeValueAsBytes(response);
 
         exchange.getResponseHeaders().set("Content-Type", "application/json; charset=UTF-8");
 
-        exchange.sendResponseHeaders(status, bytes.length);
+        exchange.sendResponseHeaders(status, body .length);
 
         try (var output = exchange.getResponseBody()) {
-            output.write(bytes);
+            output.write(body );
         }
     }
 
@@ -79,31 +84,5 @@ public final class HelloWorldHandler implements HttpHandler {
         }
 
         return name;
-    }
-
-    private static String escapeJson(String value) {
-        StringBuilder result = new StringBuilder();
-
-        for (int i = 0; i < value.length(); i++) {
-            char character = value.charAt(i);
-
-            switch (character) {
-                case '"' -> result.append("\\\"");
-                case '\\' -> result.append("\\\\");
-                case '\n' -> result.append("\\n");
-                case '\r' -> result.append("\\r");
-                case '\t' -> result.append("\\t");
-                default -> {
-                    if (character < 0x20) {
-                        result.append(String.format(
-                                "\\u%04x", (int) character));
-                    } else {
-                        result.append(character);
-                    }
-                }
-            }
-        }
-
-        return result.toString();
     }
 }
